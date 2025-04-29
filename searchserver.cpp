@@ -1,21 +1,150 @@
-#ifndef SEARCHSERVER_FILEREADER_HPP
-#define SEARCHSERVER_FILEREADER_HPP
-
+#include <iostream>
+#include <cstdlib>
 #include <string>
-#include <optional>
+#include <vector>
+#include <sstream>
+#include <algorithm>
+#include <cstring>           // for strlen()
 
-namespace searchserver {
+#include "ServerSocket.hpp"
+#include "HttpSocket.hpp"
+#include "ThreadPool.hpp"
+#include "WordIndex.hpp"
+#include "HttpUtils.hpp"
+#include "CrawlFileTree.hpp"
+#include "FileReader.hpp"
+
+using namespace searchserver;
+using std::string;
+using std::vector;
+using std::ostringstream;
+using std::cout;
+using std::cerr;
+using std::endl;
 
 /**
- * @brief Reads the entire contents of a file into a string.
- *
- * Opens the file at @p path in binary mode and returns its bytes as a std::string.
- *
- * @param path  Path to the file to read.
- * @return      On success, the file’s contents; on failure, std::nullopt.
+ * @brief Per-connection data for the threadpool.
  */
-std::optional<std::string> read_file(const std::string& path);
+struct TaskData {
+  HttpSocket client;
+  WordIndex*  index;
+  string      root;
+};
 
-}  // namespace searchserver
+/**
+ * @brief Worker function: handles all requests on one HttpSocket.
+ */
+static void handle_client(void* arg) {
+  auto* d = static_cast<TaskData*>(arg);
+  HttpSocket sock = std::move(d->client);
+  WordIndex* idx   = d->index;
+  string     root  = std::move(d->root);
+  delete d;
 
-#endif  // SEARCHSERVER_FILEREADER_HPP
+  while (true) {
+    auto req_opt = sock.next_request();
+    if (!req_opt) break;
+    const string raw = *req_opt;
+
+    // Parse request line: "GET <uri> HTTP/1.1"
+    std::istringstream reqs(raw);
+    string method, uri, version;
+    if (!(reqs >> method >> uri >> version)) break;
+
+    string response;
+
+    // 1) Static‐file requests: /static/...
+    if (uri.rfind("/static/", 0) == 0) {
+      string rel = uri.substr(8);
+      auto blob  = read_file(root + "/" + rel);
+      if (blob) {
+        auto& b = *blob;
+        ostringstream hdr;
+        hdr << "HTTP/1.1 200 OK\r\n"
+            << "Content-type: text/plain\r\n"
+            << "Content-length: " << b.size() << "\r\n\r\n"
+            << b;
+        response = hdr.str();
+      } else {
+        response = "HTTP/1.1 404 Not Found\r\n"
+                   "Content-length: 0\r\n\r\n";
+      }
+
+    // 2) Search queries: /query?terms=foo+bar
+    } else if (uri.rfind("/query?terms=", 0) == 0) {
+      string terms = uri.substr(13);
+      auto toks = split(terms, "+");
+      for (auto& w : toks) {
+        std::transform(w.begin(), w.end(), w.begin(), ::tolower);
+      }
+      auto results = idx->lookup_query(toks);
+
+      ostringstream body;
+      body << "<html><head><title>Results</title></head><body>\n"
+           << "<ul>\n";
+      for (auto& r : results) {
+        body << "<li>" << r.doc_name
+             << " [" << r.rank << "]</li>\n";
+      }
+      body << "</ul>\n</body></html>\n";
+
+      auto b = body.str();
+      ostringstream hdr;
+      hdr << "HTTP/1.1 200 OK\r\n"
+          << "Content-type: text/html\r\n"
+          << "Content-length: " << b.size() << "\r\n\r\n"
+          << b;
+      response = hdr.str();
+
+    // 3) Anything else: 404
+    } else {
+      response = "HTTP/1.1 404 Not Found\r\n"
+                 "Content-length: 0\r\n\r\n";
+    }
+
+    // Send it
+    if (!sock.write_response(response)) break;
+
+    // Honor Connection: close
+    if (raw.find("Connection: close") != string::npos ||
+        raw.find("connection: close") != string::npos) {
+      break;
+    }
+  }
+}
+
+int main(int argc, char* argv[]) {
+  if (argc != 3) {
+    cerr << "Usage: " << argv[0] << " <port> <root_dir>\n";
+    return EXIT_FAILURE;
+  }
+  uint16_t port = static_cast<uint16_t>(std::stoi(argv[1]));
+  string root   = argv[2];
+
+  // Build the index
+  auto idx_opt = crawl_filetree(root);
+  if (!idx_opt) {
+    cerr << "Error: cannot crawl directory " << root << "\n";
+    return EXIT_FAILURE;
+  }
+  WordIndex index = std::move(*idx_opt);
+
+  // Listen on localhost
+  ServerSocket server(AF_INET, "127.0.0.1", port);
+  cout << "Listening on 127.0.0.1:" << port << " …\n";
+
+  // Thread pool with 4 workers
+  ThreadPool pool(4);
+
+  // Accept loop
+  while (true) {
+    auto client_opt = server.accept_client();
+    if (!client_opt) continue;
+    auto* data = new TaskData{ std::move(*client_opt),
+                               &index,
+                               root };
+    pool.dispatch({ handle_client, data });
+  }
+
+  return EXIT_SUCCESS;
+}
