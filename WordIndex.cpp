@@ -4,7 +4,7 @@
 
 namespace searchserver {
 
-WordIndex::WordIndex() {}
+WordIndex::WordIndex() = default;
 
 size_t WordIndex::num_words() {
   // return count of unique words in the index

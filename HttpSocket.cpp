@@ -57,7 +57,7 @@ optional<string> HttpSocket::next_request() {
       return req;
     }
     // Read more data into buffer_
-    ssize_t n = wrapped_read(fd_, &buffer_);
+    auto n = wrapped_read(fd_, &buffer_);
     if (n <= 0) {
       return nullopt;
     }
@@ -66,7 +66,7 @@ optional<string> HttpSocket::next_request() {
 
 // Write the entire response via wrapped_write; return false on error.
 bool HttpSocket::write_response(const string& response) const {
-  ssize_t n = wrapped_write(fd_, response);
+  auto n = wrapped_write(fd_, response);
   return n >= 0;
 }
 
@@ -95,7 +95,7 @@ uint16_t HttpSocket::client_port() const {
 }
 
 string HttpSocket::server_addr() const {
-  struct sockaddr_storage srvr{};
+  struct sockaddr_storage srvr {};
   socklen_t srvrlen = sizeof(srvr);
   getsockname(fd_, reinterpret_cast<struct sockaddr*>(&srvr), &srvrlen);
 
@@ -113,7 +113,7 @@ string HttpSocket::server_addr() const {
 }
 
 uint16_t HttpSocket::server_port() const {
-  struct sockaddr_storage srvr{};
+  struct sockaddr_storage srvr {};
   socklen_t srvrlen = sizeof(srvr);
   getsockname(fd_, reinterpret_cast<struct sockaddr*>(&srvr), &srvrlen);
   if (srvr.ss_family == AF_INET) {

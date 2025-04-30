@@ -10,14 +10,14 @@
  */
 
 #include "./CrawlFileTree.hpp"
-#include "./FileReader.hpp"
-#include "./HttpUtils.hpp"
 #include <algorithm>
 #include <cctype>
+#include "./FileReader.hpp"
+#include "./HttpUtils.hpp"
 
-using std::string;
-using std::optional;
 using std::nullopt;
+using std::optional;
+using std::string;
 
 namespace searchserver {
 
@@ -29,7 +29,6 @@ static bool handle_dir(const string& dir_path, WordIndex& index);
 
 // Read and parse the specified file, then inject it into the MemIndex.
 static void handle_file(const string& fpath, WordIndex& index);
-
 
 //////////////////////////////////////////////////////////////////////////////
 // Externally-exported functions
@@ -48,7 +47,6 @@ optional<WordIndex> crawl_filetree(const string& root_dir) {
   }
   return index;
 }
-
 
 //////////////////////////////////////////////////////////////////////////////
 // Internal helper functions
@@ -81,7 +79,7 @@ static bool handle_dir(const string& dir_path, WordIndex& index) {
   return true;
 }
 
-static void handle_file(const string& fpath, WordIndex &index) {
+static void handle_file(const string& fpath, WordIndex& index) {
   // TODO: implement
 
   // Read the contents of the specified file into a string
@@ -92,17 +90,19 @@ static void handle_file(const string& fpath, WordIndex &index) {
   string content = *maybe_text;
 
   // Search the string for all tokens, by splitting on " \r\t\v\n,.:;?!"
-  // A delimiter marks the end of a token and is not considered a valid part of the token
+  // A delimiter marks the end of a token and is not considered a valid part of
+  // the token
   auto tokens = split(content, " \r\t\v\n,.:;?!");
 
   // Record each non empty token as a word into the Wordindex specified by index
-  // Your implementation should also be case in-sensitive and record every word in all lower-case
+  // Your implementation should also be case in-sensitive and record every word
+  // in all lower-case
   for (auto& w : tokens) {
     if (w.empty()) {
       continue;
     }
     std::transform(w.begin(), w.end(), w.begin(),
-                   [](unsigned char c){ return std::tolower(c); });
+                   [](unsigned char c) { return std::tolower(c); });
     index.record(w, fpath);
   }
 }

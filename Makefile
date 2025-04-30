@@ -9,6 +9,11 @@
 
 .PHONY: clean all tidy-check format
 
+MY_CPP_SRCS := FileReader.cpp HttpUtils.cpp CrawlFileTree.cpp WordIndex.cpp \
+               HttpSocket.cpp ServerSocket.cpp ThreadPool.cpp searchserver.cpp
+MY_HPP_SRCS := FileReader.hpp HttpUtils.hpp CrawlFileTree.hpp WordIndex.hpp \
+               HttpSocket.hpp ServerSocket.hpp ThreadPool.hpp Result.hpp
+
 # define the commands we will use for compilation and library building
 CXX = clang++-15
 # define useful flags to cc/ld/etc.
@@ -130,7 +135,7 @@ tidy-check:
 	  --extra-arg=--std=c++2b \
 	  -warnings-as-errors=* \
 	  -header-filter='.*' \
-	  $(CPP_SOURCE_FILES) $(HPP_SOURCE_FILES)
+	  $(MY_CPP_SRCS) $(MY_HPP_SRCS)
 
 # Auto-format with clang-format (Chromium style)
 format:

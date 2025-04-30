@@ -41,8 +41,9 @@ ServerSocket::ServerSocket(sa_family_t family,
   // port, address and family field of those structs.
   // The rest can be zero'd out.
   // Only IPv6 is required; reject others
-  if (family != AF_INET6) {
-    throw invalid_argument("Only IPv6 is supported");
+  // Only IPv4 and IPv6 are supported
+  if (family != AF_INET6 && family != AF_INET) {
+    throw invalid_argument("Only IPv4 or IPv6 is supported");
   }
 
   // Prepare hints
@@ -53,15 +54,15 @@ ServerSocket::ServerSocket(sa_family_t family,
 
   // Convert port to string
   string port_str = to_string(port);
-  addrinfo* res;
+  addrinfo* res = nullptr;
   int err = getaddrinfo(address.empty() ? nullptr : address.c_str(),
                         port_str.c_str(), &hints, &res);
-  if (err) {
+  if (err != 0) {
     throw runtime_error(string("getaddrinfo: ") + gai_strerror(err));
   }
 
   // Try each result until bind succeeds
-  for (addrinfo* p = res; p; p = p->ai_next) {
+  for (addrinfo* p = res; p != nullptr; p = p->ai_next) {
     listen_sock_fd_ = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
     if (listen_sock_fd_ < 0)
       continue;
@@ -102,7 +103,7 @@ optional<HttpSocket> ServerSocket::accept_client() const {
   // TODO accept the next client connection and return it as an HttpSocket
   // object nullopt on error
   // Accept a client and wrap in HttpSocket
-  struct sockaddr_storage client_addr;
+  struct sockaddr_storage client_addr {};
   socklen_t client_len = sizeof(client_addr);
   int client_fd =
       accept(listen_sock_fd_, reinterpret_cast<struct sockaddr*>(&client_addr),

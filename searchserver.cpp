@@ -1,34 +1,34 @@
-#include <iostream>
+#include <algorithm>
 #include <cstdlib>
+#include <cstring>  // for strlen()
+#include <iostream>
+#include <sstream>
 #include <string>
 #include <vector>
-#include <sstream>
-#include <algorithm>
-#include <cstring>           // for strlen()
 
-#include "ServerSocket.hpp"
-#include "HttpSocket.hpp"
-#include "ThreadPool.hpp"
-#include "WordIndex.hpp"
-#include "HttpUtils.hpp"
 #include "CrawlFileTree.hpp"
 #include "FileReader.hpp"
+#include "HttpSocket.hpp"
+#include "HttpUtils.hpp"
+#include "ServerSocket.hpp"
+#include "ThreadPool.hpp"
+#include "WordIndex.hpp"
 
 using namespace searchserver;
+using std::cerr;
+using std::cout;
+using std::endl;
+using std::ostringstream;
 using std::string;
 using std::vector;
-using std::ostringstream;
-using std::cout;
-using std::cerr;
-using std::endl;
 
 /**
  * @brief Per-connection data for the threadpool.
  */
 struct TaskData {
   HttpSocket client;
-  WordIndex*  index;
-  string      root;
+  WordIndex* index;
+  string root;
 };
 
 /**
@@ -37,26 +37,31 @@ struct TaskData {
 static void handle_client(void* arg) {
   auto* d = static_cast<TaskData*>(arg);
   HttpSocket sock = std::move(d->client);
-  WordIndex* idx   = d->index;
-  string     root  = std::move(d->root);
+  WordIndex* idx = d->index;
+  string root = std::move(d->root);
   delete d;
 
   while (true) {
     auto req_opt = sock.next_request();
-    if (!req_opt) break;
+    if (!req_opt)
+      break;
     const string raw = *req_opt;
 
     // Parse request line: "GET <uri> HTTP/1.1"
     std::istringstream reqs(raw);
-    string method, uri, version;
-    if (!(reqs >> method >> uri >> version)) break;
+    string method;
+    string uri;
+    string version;
+
+    if (!(reqs >> method >> uri >> version))
+      break;
 
     string response;
 
     // 1) Static‐file requests: /static/...
     if (uri.rfind("/static/", 0) == 0) {
       string rel = uri.substr(8);
-      auto blob  = read_file(root + "/" + rel);
+      auto blob = read_file(root + "/" + rel);
       if (blob) {
         auto& b = *blob;
         ostringstream hdr;
@@ -66,11 +71,12 @@ static void handle_client(void* arg) {
             << b;
         response = hdr.str();
       } else {
-        response = "HTTP/1.1 404 Not Found\r\n"
-                   "Content-length: 0\r\n\r\n";
+        response =
+            "HTTP/1.1 404 Not Found\r\n"
+            "Content-length: 0\r\n\r\n";
       }
 
-    // 2) Search queries: /query?terms=foo+bar
+      // 2) Search queries: /query?terms=foo+bar
     } else if (uri.rfind("/query?terms=", 0) == 0) {
       string terms = uri.substr(13);
       auto toks = split(terms, "+");
@@ -83,8 +89,7 @@ static void handle_client(void* arg) {
       body << "<html><head><title>Results</title></head><body>\n"
            << "<ul>\n";
       for (auto& r : results) {
-        body << "<li>" << r.doc_name
-             << " [" << r.rank << "]</li>\n";
+        body << "<li>" << r.doc_name << " [" << r.rank << "]</li>\n";
       }
       body << "</ul>\n</body></html>\n";
 
@@ -96,14 +101,16 @@ static void handle_client(void* arg) {
           << b;
       response = hdr.str();
 
-    // 3) Anything else: 404
+      // 3) Anything else: 404
     } else {
-      response = "HTTP/1.1 404 Not Found\r\n"
-                 "Content-length: 0\r\n\r\n";
+      response =
+          "HTTP/1.1 404 Not Found\r\n"
+          "Content-length: 0\r\n\r\n";
     }
 
     // Send it
-    if (!sock.write_response(response)) break;
+    if (!sock.write_response(response))
+      break;
 
     // Honor Connection: close
     if (raw.find("Connection: close") != string::npos ||
@@ -119,7 +126,7 @@ int main(int argc, char* argv[]) {
     return EXIT_FAILURE;
   }
   uint16_t port = static_cast<uint16_t>(std::stoi(argv[1]));
-  string root   = argv[2];
+  string root = argv[2];
 
   // Build the index
   auto idx_opt = crawl_filetree(root);
@@ -139,11 +146,10 @@ int main(int argc, char* argv[]) {
   // Accept loop
   while (true) {
     auto client_opt = server.accept_client();
-    if (!client_opt) continue;
-    auto* data = new TaskData{ std::move(*client_opt),
-                               &index,
-                               root };
-    pool.dispatch({ handle_client, data });
+    if (!client_opt)
+      continue;
+    auto* data = new TaskData{std::move(*client_opt), &index, root};
+    pool.dispatch({handle_client, data});
   }
 
   return EXIT_SUCCESS;
