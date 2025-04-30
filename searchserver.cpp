@@ -58,8 +58,13 @@ static void handle_client(void* arg) {
 
     string response;
 
+    if (uri == "/") {
+      response =
+          "HTTP/1.1 302 Found\r\n"
+          "Location: /static/index.html\r\n\r\n";
+    }
     // 1) Static‐file requests: /static/...
-    if (uri.rfind("/static/", 0) == 0) {
+    else if (uri.rfind("/static/", 0) == 0) {
       string rel = uri.substr(8);
       auto blob = read_file(root + "/" + rel);
       if (blob) {
@@ -80,9 +85,27 @@ static void handle_client(void* arg) {
     } else if (uri.rfind("/query?terms=", 0) == 0) {
       string terms = uri.substr(13);
       auto toks = split(terms, "+");
+
+      // strip non-alphanumeric from ends
+      auto strip_punct = [](string& s) {
+        size_t start = 0, end = s.size();
+        while (start < end &&
+               !std::isalnum(static_cast<unsigned char>(s[start])))
+          ++start;
+        while (end > start &&
+               !std::isalnum(static_cast<unsigned char>(s[end - 1])))
+          --end;
+        s = s.substr(start, end - start);
+      };
+
       for (auto& w : toks) {
         std::transform(w.begin(), w.end(), w.begin(), ::tolower);
+        strip_punct(w);
       }
+      toks.erase(std::remove_if(toks.begin(), toks.end(),
+                                [](const string& s) { return s.empty(); }),
+                 toks.end());
+
       auto results = idx->lookup_query(toks);
 
       ostringstream body;
